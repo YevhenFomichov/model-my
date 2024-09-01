@@ -67,32 +67,38 @@ def smooth_predictions(predictions, window_size):
         return predictions  
     return np.convolve(predictions, np.ones(window_size)/window_size, mode='valid')
 
+def prepare_data_for_model(features, expected_shape):
+    # Извлекаем данные в нужной форме для модели
+    num_samples, frame_size, num_channels = features.shape[0], features.shape[1], features.shape[2]
+    
+    # Рассчитываем количество нужных батчей
+    batch_size = expected_shape[0]  # Ожидаемый размер батча (например, 32)
+    total_batches = (num_samples + batch_size - 1) // batch_size  # Округление вверх для нужного числа батчей
+    
+    # Создаем массив для хранения всех батчей
+    prepared_data = np.zeros((total_batches * batch_size, frame_size, num_channels), dtype=np.float32)
+
+    # Копируем данные
+    prepared_data[:num_samples] = features
+
+    # Возвращаем данные в ожидаемой форме для модели
+    return prepared_data.reshape((-1, batch_size, frame_size, num_channels))
+
 def predict_with_tflite(interpreter, features):
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 
-    # Преобразуем признаки в нужный тип и форму
-    input_data = np.array(features, dtype=np.float32)
+    # Ожидаемая форма входных данных
+    expected_shape = input_details[0]['shape']
 
-    # Проверяем количество фрагментов и делим на батчи
-    total_samples = input_data.shape[0]
-    batch_size = input_details[0]['shape'][0]  # Ожидаемый размер батча (32)
-    input_batches = []
-
-    for i in range(0, total_samples, batch_size):
-        batch = input_data[i:i + batch_size]
-        
-        # Если батч меньше, чем ожидается, добавляем нулевые значения для заполнения
-        if batch.shape[0] < batch_size:
-            padding_shape = (batch_size - batch.shape[0],) + input_data.shape[1:]
-            padding = np.zeros(padding_shape, dtype=np.float32)
-            batch = np.concatenate((batch, padding), axis=0)
-        
-        input_batches.append(batch)
+    # Преобразуем признаки в нужную форму для модели
+    input_data = prepare_data_for_model(features, expected_shape)
 
     predictions = []
 
-    for batch in input_batches:
+    for i in range(0, input_data.shape[0], expected_shape[0]):
+        batch = input_data[i:i + expected_shape[0]]
+
         # Устанавливаем данные для входного тензора
         interpreter.set_tensor(input_details[0]['index'], batch)
 
@@ -157,4 +163,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
