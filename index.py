@@ -68,6 +68,13 @@ def smooth_predictions(predictions, window_size):
     return np.convolve(predictions, np.ones(window_size)/window_size, mode='valid')
 
 def predict_with_tflite(interpreter, input_data):
+    # Ensure input data is of the correct type (float32)
+    input_data = np.array(input_data, dtype=np.float32)
+
+    # Ensure the input data matches the expected input shape
+    expected_shape = input_details[0]['shape']
+    input_data = np.reshape(input_data, expected_shape)
+
     # Устанавливаем данные для входного тензора
     interpreter.set_tensor(input_details[0]['index'], input_data)
     
