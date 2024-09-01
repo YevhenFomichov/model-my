@@ -68,24 +68,22 @@ def smooth_predictions(predictions, window_size):
     return np.convolve(predictions, np.ones(window_size)/window_size, mode='valid')
 
 def predict_with_tflite(interpreter, features):
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
+    # Получаем ожидаемую форму входных данных
+    input_shape = input_details[0]['shape']
 
     # Преобразуем признаки в нужный тип и форму
     input_data = np.array(features, dtype=np.float32)
 
-    # Отладка: выводим ожидаемую форму и фактическую форму данных
-    st.write(f"Ожидаемая форма входного тензора: {input_details[0]['shape']}")
-    st.write(f"Форма входных данных: {input_data.shape}")
+    # Проверяем размеры входных данных
+    st.write(f"Ожидаемая форма входных данных: {input_shape}")
+    st.write(f"Форма входных данных перед установкой: {input_data.shape}")
 
-    # Проверка соответствия формы данных
-    if input_data.shape != tuple(input_details[0]['shape']):
-        st.write(f"Предупреждение: форма данных не соответствует ожидаемой форме! Преобразуем данные...")
-        try:
-            input_data = np.reshape(input_data, input_details[0]['shape'])
-        except Exception as e:
-            st.error(f"Ошибка при изменении формы данных: {e}")
-            return np.array([])
+    # Изменяем форму входных данных для соответствия ожидаемой форме
+    try:
+        input_data = np.reshape(input_data, input_shape)
+    except ValueError as e:
+        st.error(f"Ошибка при изменении формы данных: {e}")
+        return np.array([])
 
     # Устанавливаем данные для входного тензора
     interpreter.set_tensor(input_details[0]['index'], input_data)
@@ -106,8 +104,8 @@ def process_and_plot(file_path, interpreter, samplerate_target, samplesize_ms):
     # Прогнозирование с использованием TFLite модели
     predictions = predict_with_tflite(interpreter, features)
 
-    if predictions.size == 0:
-        st.error("Не удалось получить предсказания из модели. Проверьте логи для получения дополнительных сведений.")
+    if predictions.size == 0:  # Если предсказания пусты из-за ошибки
+        st.error("Не удалось обработать входной файл. Проверьте логи для получения дополнительных сведений.")
         return
 
     smoothed_predictions = smooth_predictions(predictions, SMOOTHING_WINDOW)
@@ -149,3 +147,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
