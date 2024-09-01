@@ -12,7 +12,7 @@ THRESHOLD = 21.5
 SMOOTHING_WINDOW = 4  
 
 # Укажите путь к модели
-MODEL_PATH = 'model.keras'  # Замените на фактический путь к вашей модели
+model_path = 'model.keras'  # Замените на фактический путь к вашей модели
 
 # Загрузка модели Keras с использованием Streamlit caching
 @st.cache_resource
