@@ -73,15 +73,24 @@ def predict_with_tflite(interpreter, input_data):
 
     # Ensure the input data matches the expected input shape
     expected_shape = input_details[0]['shape']
-    input_data = np.reshape(input_data, expected_shape)
 
-    # Устанавливаем данные для входного тензора
+    # Debugging: Print expected shape and input data shape
+    st.write(f"Expected input shape: {expected_shape}")
+    st.write(f"Input data shape before reshaping: {input_data.shape}")
+
+    try:
+        input_data = np.reshape(input_data, expected_shape)
+    except ValueError as e:
+        st.error(f"Error reshaping input data: {e}")
+        return np.array([])  # Return an empty array to handle the error gracefully
+
+    # Set the input tensor
     interpreter.set_tensor(input_details[0]['index'], input_data)
     
-    # Выполняем предсказание
+    # Perform prediction
     interpreter.invoke()
     
-    # Получаем результаты
+    # Get the results
     output_data = interpreter.get_tensor(output_details[0]['index'])
     return output_data.flatten()
 
@@ -91,9 +100,13 @@ def process_and_plot(file_path, interpreter, samplerate_target, samplesize_ms):
     audio, sample_rate = load_audio_file(file_path, sr=samplerate_target)
     features = extract_features(audio, sample_rate, frame_length, feature_type='raw')
 
-    # Преобразование функций в нужный формат
+    # Convert features to tensor and check dimensions
     features_tensor = tf.convert_to_tensor(features, dtype=tf.float32)
     predictions = predict_with_tflite(interpreter, features_tensor)
+
+    if predictions.size == 0:  # If predictions are empty due to an error
+        st.error("Failed to process the input file. Please check the logs for more details.")
+        return
 
     smoothed_predictions = smooth_predictions(predictions, SMOOTHING_WINDOW)
     
@@ -120,16 +133,15 @@ def process_and_plot(file_path, interpreter, samplerate_target, samplesize_ms):
 def main():
     st.title('Audio File Processing with TensorFlow Lite')
 
-    # Загружаем файл через интерфейс Streamlit
+    # Upload file through Streamlit interface
     uploaded_file = st.file_uploader("Upload a .wav file", type="wav")
     
-    # Проверяем, был ли загружен файл
     if uploaded_file is not None:
-        # Сохраняем загруженный файл во временную директорию
+        # Save uploaded file temporarily
         with open("temp_audio.wav", "wb") as f:
             f.write(uploaded_file.getbuffer())
         
-        # Выполняем анализ загруженного файла
+        # Analyze uploaded file
         process_and_plot("temp_audio.wav", interpreter, samplerate_target=44100, samplesize_ms=50)
     else:
         st.write("Please upload a .wav file to analyze.")
