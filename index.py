@@ -11,6 +11,9 @@ import os
 THRESHOLD = 21.5  
 SMOOTHING_WINDOW = 4  
 
+# Укажите путь к модели
+MODEL_PATH = 'model.keras'  # Замените на фактический путь к вашей модели
+
 # Загрузка модели Keras с использованием Streamlit caching
 @st.cache_resource
 def load_keras_model(model_path):
@@ -98,11 +101,8 @@ def process_and_plot(file_path, model, samplerate_target, samplesize_ms):
 def main():
     st.title("Audio Analysis with Deep Learning using Keras")
 
-    # Путь к файлу модели
-    model_path = st.text_input('Enter path to Keras model:')
-    model = None
-    if model_path:
-        model = load_keras_model(model_path)
+    # Загрузка модели
+    model = load_keras_model(MODEL_PATH)
 
     if model:
         folder_path = st.text_input('Enter folder path with .wav files:')
