@@ -68,32 +68,41 @@ def smooth_predictions(predictions, window_size):
     return np.convolve(predictions, np.ones(window_size)/window_size, mode='valid')
 
 def predict_with_tflite(interpreter, features):
-    # Получаем ожидаемую форму входных данных
-    input_shape = input_details[0]['shape']
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
 
     # Преобразуем признаки в нужный тип и форму
     input_data = np.array(features, dtype=np.float32)
 
-    # Проверяем размеры входных данных
-    st.write(f"Ожидаемая форма входных данных: {input_shape}")
-    st.write(f"Форма входных данных перед установкой: {input_data.shape}")
+    # Проверяем количество фрагментов и делим на батчи
+    total_samples = input_data.shape[0]
+    batch_size = input_details[0]['shape'][0]  # Ожидаемый размер батча (32)
+    input_batches = []
 
-    # Изменяем форму входных данных для соответствия ожидаемой форме
-    try:
-        input_data = np.reshape(input_data, input_shape)
-    except ValueError as e:
-        st.error(f"Ошибка при изменении формы данных: {e}")
-        return np.array([])
+    for i in range(0, total_samples, batch_size):
+        batch = input_data[i:i + batch_size]
+        
+        # Если батч меньше, чем ожидается, добавляем нулевые значения для заполнения
+        if batch.shape[0] < batch_size:
+            padding = np.zeros((batch_size - batch.shape[0], input_data.shape[1], input_data.shape[2]))
+            batch = np.vstack([batch, padding])
+        
+        input_batches.append(batch)
 
-    # Устанавливаем данные для входного тензора
-    interpreter.set_tensor(input_details[0]['index'], input_data)
+    predictions = []
 
-    # Выполняем предсказание
-    interpreter.invoke()
+    for batch in input_batches:
+        # Устанавливаем данные для входного тензора
+        interpreter.set_tensor(input_details[0]['index'], batch)
 
-    # Получаем результаты
-    output_data = interpreter.get_tensor(output_details[0]['index'])
-    return output_data.flatten()
+        # Выполняем предсказание
+        interpreter.invoke()
+
+        # Получаем результаты
+        output_data = interpreter.get_tensor(output_details[0]['index'])
+        predictions.extend(output_data.flatten())
+
+    return np.array(predictions)
 
 def process_and_plot(file_path, interpreter, samplerate_target, samplesize_ms):
     frame_length = samplesize_ms / 1000
@@ -104,8 +113,8 @@ def process_and_plot(file_path, interpreter, samplerate_target, samplesize_ms):
     # Прогнозирование с использованием TFLite модели
     predictions = predict_with_tflite(interpreter, features)
 
-    if predictions.size == 0:  # Если предсказания пусты из-за ошибки
-        st.error("Не удалось обработать входной файл. Проверьте логи для получения дополнительных сведений.")
+    if predictions.size == 0:
+        st.error("Не удалось получить предсказания из модели. Проверьте логи для получения дополнительных сведений.")
         return
 
     smoothed_predictions = smooth_predictions(predictions, SMOOTHING_WINDOW)
@@ -147,4 +156,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
