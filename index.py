@@ -6,10 +6,6 @@ import matplotlib.pyplot as plt
 from scipy.io import wavfile
 import os
 
-# threshold и smoothing_window
-THRESHOLD = 21.5  
-SMOOTHING_WINDOW = 4  
-
 # Загрузка модели Keras
 model = tf.keras.models.load_model('model.keras')
 
@@ -56,7 +52,7 @@ def smooth_predictions(predictions, window_size):
         return predictions  
     return np.convolve(predictions, np.ones(window_size)/window_size, mode='valid')
 
-def process_and_plot(file_path, model, samplerate_target, samplesize_ms):
+def process_and_plot(file_path, model, samplerate_target, samplesize_ms, threshold, smoothing_window):
     frame_length = samplesize_ms / 1000
 
     audio, sample_rate = load_audio_file(file_path, sr=samplerate_target)
@@ -65,9 +61,9 @@ def process_and_plot(file_path, model, samplerate_target, samplesize_ms):
     features_tensor = tf.convert_to_tensor(features, dtype=tf.float32)
     predictions = model.predict(features_tensor).flatten()
 
-    smoothed_predictions = smooth_predictions(predictions, SMOOTHING_WINDOW)
+    smoothed_predictions = smooth_predictions(predictions, smoothing_window)
 
-    filtered_predictions = smoothed_predictions[smoothed_predictions > THRESHOLD]
+    filtered_predictions = smoothed_predictions[smoothed_predictions > threshold]
     if len(filtered_predictions) > 0:
         average_value = np.mean(filtered_predictions)
     else:
@@ -79,7 +75,7 @@ def process_and_plot(file_path, model, samplerate_target, samplesize_ms):
     fig, ax = plt.subplots()
     ax.plot(time_axis_original, predictions, label='Original Predicted Flow Rate L/min', alpha=0.5)
     ax.plot(time_axis_smoothed, smoothed_predictions, label='Smoothed Predicted Flow Rate L/min', linewidth=2)
-    ax.axhline(y=average_value, color='r', linestyle='--', label=f'Average Flow Rate L/min (>{THRESHOLD})')
+    ax.axhline(y=average_value, color='r', linestyle='--', label=f'Average Flow Rate L/min (>{threshold})')
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Flow Rate L/min')
     ax.legend()
@@ -89,14 +85,19 @@ def process_and_plot(file_path, model, samplerate_target, samplesize_ms):
 
     st.pyplot(fig)
 
-    st.write(f'Predicted average for {base_name} with threshold {THRESHOLD} and smoothing window {SMOOTHING_WINDOW}: {average_value:.2f}')
+    st.write(f'Predicted average for {base_name} with threshold {threshold} and smoothing window {smoothing_window}: {average_value:.2f}')
 
 # Streamlit app
 st.title('Audio Analysis using Deep Learning Model')
+
+# Input widgets for threshold and smoothing window
+threshold = st.number_input('Set Threshold', min_value=0.0, max_value=100.0, value=21.5, step=0.1)
+smoothing_window = st.slider('Set Smoothing Window Size', min_value=1, max_value=100, value=4, step=1)
 
 uploaded_file = st.file_uploader("Upload an audio file", type=["wav"])
 
 if uploaded_file is not None:
     with open("temp_audio.wav", "wb") as f:
         f.write(uploaded_file.getbuffer())
-    process_and_plot("temp_audio.wav", model, samplerate_target=44100, samplesize_ms=50)
+    process_and_plot("temp_audio.wav", model, samplerate_target=44100, samplesize_ms=50, threshold=threshold, smoothing_window=smoothing_window)
+
