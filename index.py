@@ -7,16 +7,22 @@ from scipy.io import wavfile
 import os
 from tensorflow.keras.models import load_model
 
-# Load the model
+# Загрузка модели TFLite
 @st.cache_resource
-def load_model_from_path():
-    # Replace with the path to your model accessible from the server
-    model_path = 'model.keras'
-    return load_model(model_path)
+def load_tflite_model():
+    # Загрузка TFLite модели
+    model_path = 'model_cheat.tflite'
+    interpreter = tf.lite.Interpreter(model_path=model_path)
+    interpreter.allocate_tensors()
+    return interpreter
 
-model = load_model_from_path()
+interpreter = load_tflite_model()
 
-# Define constants
+# Получение информации о тензорах входа и выхода модели
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+# Константы
 THRESHOLD = 21.5  
 SMOOTHING_WINDOW = 4  
 
