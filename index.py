@@ -9,7 +9,7 @@ import os
 # Загрузка модели TFLite
 @st.cache_resource
 def load_tflite_model():
-    # Загрузка TFLite модели
+    # Путь к вашей модели TensorFlow Lite
     model_path = 'model_cheat.tflite'
     interpreter = tf.lite.Interpreter(model_path=model_path)
     interpreter.allocate_tensors()
@@ -21,7 +21,7 @@ interpreter = load_tflite_model()
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
-# Константы
+# Порог и окно сглаживания
 THRESHOLD = 21.5  
 SMOOTHING_WINDOW = 4  
 
@@ -29,7 +29,7 @@ def load_audio_file(file_path, sr=44100):
     try:
         audio, sample_rate = librosa.load(file_path, sr=sr)
     except Exception as e:
-        st.write(f"Error with librosa: {e}. Trying scipy...")
+        st.write(f"Ошибка при загрузке с помощью librosa: {e}. Пробуем использовать scipy...")
         sample_rate, audio = wavfile.read(file_path)
         if sample_rate != sr:
             audio = librosa.resample(audio.astype(float), orig_sr=sample_rate, target_sr=sr)
@@ -67,30 +67,20 @@ def smooth_predictions(predictions, window_size):
         return predictions  
     return np.convolve(predictions, np.ones(window_size)/window_size, mode='valid')
 
-def predict_with_tflite(interpreter, input_data):
-    # Ensure input data is of the correct type (float32)
-    input_data = np.array(input_data, dtype=np.float32)
+def predict_with_tflite(interpreter, features):
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
 
-    # Ensure the input data matches the expected input shape
-    expected_shape = input_details[0]['shape']
+    # Преобразуем признаки в нужный тип и форму
+    input_data = np.array(features, dtype=np.float32)
 
-    # Debugging: Print expected shape and input data shape
-    st.write(f"Expected input shape: {expected_shape}")
-    st.write(f"Input data shape before reshaping: {input_data.shape}")
-
-    try:
-        input_data = np.reshape(input_data, expected_shape)
-    except ValueError as e:
-        st.error(f"Error reshaping input data: {e}")
-        return np.array([])  # Return an empty array to handle the error gracefully
-
-    # Set the input tensor
+    # Устанавливаем данные для входного тензора
     interpreter.set_tensor(input_details[0]['index'], input_data)
-    
-    # Perform prediction
+
+    # Выполняем предсказание
     interpreter.invoke()
-    
-    # Get the results
+
+    # Получаем результаты
     output_data = interpreter.get_tensor(output_details[0]['index'])
     return output_data.flatten()
 
@@ -100,13 +90,8 @@ def process_and_plot(file_path, interpreter, samplerate_target, samplesize_ms):
     audio, sample_rate = load_audio_file(file_path, sr=samplerate_target)
     features = extract_features(audio, sample_rate, frame_length, feature_type='raw')
 
-    # Convert features to tensor and check dimensions
-    features_tensor = tf.convert_to_tensor(features, dtype=tf.float32)
-    predictions = predict_with_tflite(interpreter, features_tensor)
-
-    if predictions.size == 0:  # If predictions are empty due to an error
-        st.error("Failed to process the input file. Please check the logs for more details.")
-        return
+    # Прогнозирование с использованием TFLite модели
+    predictions = predict_with_tflite(interpreter, features)
 
     smoothed_predictions = smooth_predictions(predictions, SMOOTHING_WINDOW)
     
@@ -117,35 +102,35 @@ def process_and_plot(file_path, interpreter, samplerate_target, samplesize_ms):
     time_axis_smoothed = np.linspace(0, len(audio) / sample_rate, num=len(smoothed_predictions))
 
     fig, ax = plt.subplots()
-    ax.plot(time_axis_original, predictions, label='Original Predicted Flow Rate L/min', alpha=0.5)
-    ax.plot(time_axis_smoothed, smoothed_predictions, label='Smoothed Predicted Flow Rate L/min', linewidth=2)
-    ax.axhline(y=average_value, color='r', linestyle='--', label=f'Average Flow Rate L/min (>{THRESHOLD})')
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Flow Rate L/min')
+    ax.plot(time_axis_original, predictions, label='Оригинальный прогноз потока (л/мин)', alpha=0.5)
+    ax.plot(time_axis_smoothed, smoothed_predictions, label='Сглаженный прогноз потока (л/мин)', linewidth=2)
+    ax.axhline(y=average_value, color='r', linestyle='--', label=f'Средний поток (л/мин) (>{THRESHOLD})')
+    ax.set_xlabel('Время (с)')
+    ax.set_ylabel('Поток (л/мин)')
     ax.legend()
 
     base_name = os.path.splitext(os.path.basename(file_path))[0]
-    ax.set_title(f'Predictions for {base_name}')
+    ax.set_title(f'Прогнозы для {base_name}')
     st.pyplot(fig)
 
-    st.write(f'Predicted average for {base_name} with threshold {THRESHOLD} and smoothing window {SMOOTHING_WINDOW}: {average_value}')
+    st.write(f'Средний прогноз для {base_name} с порогом {THRESHOLD} и окном сглаживания {SMOOTHING_WINDOW}: {average_value}')
 
 def main():
-    st.title('Audio File Processing with TensorFlow Lite')
+    st.title('Обработка аудиофайлов с использованием TensorFlow Lite')
 
-    # Upload file through Streamlit interface
-    uploaded_file = st.file_uploader("Upload a .wav file", type="wav")
+    uploaded_file = st.file_uploader("Загрузите файл .wav", type="wav")
     
     if uploaded_file is not None:
-        # Save uploaded file temporarily
+        # Сохранение загруженного файла временно
         with open("temp_audio.wav", "wb") as f:
             f.write(uploaded_file.getbuffer())
         
-        # Analyze uploaded file
+        # Анализ загруженного файла
         process_and_plot("temp_audio.wav", interpreter, samplerate_target=44100, samplesize_ms=50)
     else:
-        st.write("Please upload a .wav file to analyze.")
+        st.write("Пожалуйста, загрузите файл .wav для анализа.")
 
 if __name__ == '__main__':
     main()
+
 
