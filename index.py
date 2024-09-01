@@ -7,15 +7,20 @@ import matplotlib.pyplot as plt
 from scipy.io import wavfile
 import os
 
-# threshold и smoothing_window
+# Константы для обработки
 THRESHOLD = 21.5  
 SMOOTHING_WINDOW = 4  
-# Загрузка модели Keras с использованием Streamlit caching
-model_path = 'model.keras'  # Замените на ваш путь к модели
+
 # Загрузка модели Keras с использованием Streamlit caching
 @st.cache_resource
 def load_keras_model(model_path):
-    return load_model(model_path)
+    try:
+        model = load_model(model_path)
+        st.success(f"Model loaded successfully from {model_path}")
+        return model
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        return None
 
 def load_audio_file(file_path, sr=44100):
     try:
@@ -71,10 +76,7 @@ def process_and_plot(file_path, model, samplerate_target, samplesize_ms):
 
     smoothed_predictions = smooth_predictions(predictions, SMOOTHING_WINDOW)
     filtered_predictions = smoothed_predictions[smoothed_predictions > THRESHOLD]
-    if len(filtered_predictions) > 0:
-        average_value = np.mean(filtered_predictions)
-    else:
-        average_value = 0  
+    average_value = np.mean(filtered_predictions) if len(filtered_predictions) > 0 else 0  
 
     time_axis_original = np.linspace(0, len(audio) / sample_rate, num=len(predictions))
     time_axis_smoothed = np.linspace(0, len(audio) / sample_rate, num=len(smoothed_predictions))
@@ -98,9 +100,11 @@ def main():
 
     # Путь к файлу модели
     model_path = st.text_input('Enter path to Keras model:')
+    model = None
     if model_path:
         model = load_keras_model(model_path)
 
+    if model:
         folder_path = st.text_input('Enter folder path with .wav files:')
 
         if folder_path:
@@ -115,4 +119,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
