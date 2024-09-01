@@ -85,7 +85,7 @@ def predict_with_tflite(interpreter, features):
         # Если батч меньше, чем ожидается, добавляем нулевые значения для заполнения
         if batch.shape[0] < batch_size:
             # Создаем пустой массив правильной формы для заполнения
-            padding = np.zeros((batch_size - batch.shape[0], input_data.shape[1], input_data.shape[2]), dtype=np.float32)
+            padding = np.zeros((batch_size - batch.shape[0], input_data.shape[1], input_data.shape[2], input_data.shape[3]), dtype=np.float32)
             
             # Проверяем форму перед объединением
             st.write(f"Форма батча: {batch.shape}, Форма заполнения: {padding.shape}")
