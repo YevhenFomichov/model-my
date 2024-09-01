@@ -69,20 +69,24 @@ def smooth_predictions(predictions, window_size):
 
 def prepare_data_for_model(features, expected_shape):
     # Извлекаем данные в нужной форме для модели
-    num_samples, frame_size, num_channels = features.shape[0], features.shape[1], features.shape[2]
-    
-    # Рассчитываем количество нужных батчей
-    batch_size = expected_shape[0]  # Ожидаемый размер батча (например, 32)
-    total_batches = (num_samples + batch_size - 1) // batch_size  # Округление вверх для нужного числа батчей
-    
-    # Создаем массив для хранения всех батчей
+    num_samples = features.shape[0]
+    frame_size = expected_shape[1]
+    num_channels = expected_shape[2]
+
+    # Рассчитываем количество батчей
+    batch_size = expected_shape[0]
+    total_batches = (num_samples + batch_size - 1) // batch_size  # Округляем вверх для нужного числа батчей
+
+    # Создаем пустой массив для хранения всех батчей
     prepared_data = np.zeros((total_batches * batch_size, frame_size, num_channels), dtype=np.float32)
 
-    # Копируем данные
-    prepared_data[:num_samples] = features
+    # Копируем данные с изменением формы
+    for i in range(num_samples):
+        prepared_data[i, :, 0] = features[i].flatten()
 
     # Возвращаем данные в ожидаемой форме для модели
-    return prepared_data.reshape((-1, batch_size, frame_size, num_channels))
+    prepared_data = prepared_data.reshape((-1, batch_size, frame_size, num_channels))
+    return prepared_data
 
 def predict_with_tflite(interpreter, features):
     input_details = interpreter.get_input_details()
