@@ -10,7 +10,7 @@ import os
 @st.cache_resource
 def load_tflite_model():
     # Путь к вашей модели TensorFlow Lite
-    model_path = 'model_cheat.tflite'
+    model_path = 'model_cheat.tflite'  # Замените на ваш путь к модели
     interpreter = tf.lite.Interpreter(model_path=model_path)
     interpreter.allocate_tensors()
     return interpreter
@@ -84,13 +84,8 @@ def predict_with_tflite(interpreter, features):
         
         # Если батч меньше, чем ожидается, добавляем нулевые значения для заполнения
         if batch.shape[0] < batch_size:
-            # Создаем пустой массив правильной формы для заполнения
-            padding = np.zeros((batch_size - batch.shape[0], input_data.shape[1], input_data.shape[2], input_data.shape[3]), dtype=np.float32)
-            
-            # Проверяем форму перед объединением
-            st.write(f"Форма батча: {batch.shape}, Форма заполнения: {padding.shape}")
-            
-            # Используем np.concatenate для объединения данных
+            padding_shape = (batch_size - batch.shape[0],) + input_data.shape[1:]
+            padding = np.zeros(padding_shape, dtype=np.float32)
             batch = np.concatenate((batch, padding), axis=0)
         
         input_batches.append(batch)
@@ -162,3 +157,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
