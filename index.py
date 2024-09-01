@@ -102,7 +102,7 @@ def main():
     st.title("Audio Analysis with Deep Learning using Keras")
 
     # Загрузка модели
-    model = load_keras_model(MODEL_PATH)
+    model = load_keras_model(model_path)
 
     if model:
         folder_path = st.text_input('Enter folder path with .wav files:')
