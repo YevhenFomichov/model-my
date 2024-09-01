@@ -1,0 +1,17 @@
+numpy 
+pandas 
+scipy 
+matplotlib 
+scikit-learn 
+tensorflow==2.15.0
+tensorflow-hub
+pydub 
+tqdm 
+ffmpeg
+librosa
+soundfile
+statistics
+streamlit
+streamlit-audiorecorder
+tensorflow
+scipy
