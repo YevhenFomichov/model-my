@@ -5,7 +5,6 @@ import librosa
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 import os
-from tensorflow.keras.models import load_model
 
 # Загрузка модели TFLite
 @st.cache_resource
@@ -68,14 +67,26 @@ def smooth_predictions(predictions, window_size):
         return predictions  
     return np.convolve(predictions, np.ones(window_size)/window_size, mode='valid')
 
-def process_and_plot(file_path, model, samplerate_target, samplesize_ms):
+def predict_with_tflite(interpreter, input_data):
+    # Устанавливаем данные для входного тензора
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    
+    # Выполняем предсказание
+    interpreter.invoke()
+    
+    # Получаем результаты
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    return output_data.flatten()
+
+def process_and_plot(file_path, interpreter, samplerate_target, samplesize_ms):
     frame_length = samplesize_ms / 1000
 
     audio, sample_rate = load_audio_file(file_path, sr=samplerate_target)
     features = extract_features(audio, sample_rate, frame_length, feature_type='raw')
 
+    # Преобразование функций в нужный формат
     features_tensor = tf.convert_to_tensor(features, dtype=tf.float32)
-    predictions = model.predict(features_tensor).flatten()
+    predictions = predict_with_tflite(interpreter, features_tensor)
 
     smoothed_predictions = smooth_predictions(predictions, SMOOTHING_WINDOW)
     
@@ -100,15 +111,22 @@ def process_and_plot(file_path, model, samplerate_target, samplesize_ms):
     st.write(f'Predicted average for {base_name} with threshold {THRESHOLD} and smoothing window {SMOOTHING_WINDOW}: {average_value}')
 
 def main():
-    st.title('Audio File Processing with TensorFlow')
+    st.title('Audio File Processing with TensorFlow Lite')
 
+    # Загружаем файл через интерфейс Streamlit
     uploaded_file = st.file_uploader("Upload a .wav file", type="wav")
+    
+    # Проверяем, был ли загружен файл
     if uploaded_file is not None:
-        # Save uploaded file temporarily
+        # Сохраняем загруженный файл во временную директорию
         with open("temp_audio.wav", "wb") as f:
             f.write(uploaded_file.getbuffer())
         
-        process_and_plot("temp_audio.wav", model, samplerate_target=44100, samplesize_ms=50)
+        # Выполняем анализ загруженного файла
+        process_and_plot("temp_audio.wav", interpreter, samplerate_target=44100, samplesize_ms=50)
+    else:
+        st.write("Please upload a .wav file to analyze.")
 
 if __name__ == '__main__':
     main()
+
