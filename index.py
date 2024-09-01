@@ -1,35 +1,27 @@
 import streamlit as st
 import tensorflow as tf
+from tensorflow.keras.models import load_model
 import numpy as np
 import librosa
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 import os
 
-# Загрузка модели TFLite
-@st.cache_resource
-def load_tflite_model():
-    # Путь к вашей модели TensorFlow Lite
-    model_path = 'model_cheat.tflite'  # Замените на ваш путь к модели
-    interpreter = tf.lite.Interpreter(model_path=model_path)
-    interpreter.allocate_tensors()
-    return interpreter
-
-interpreter = load_tflite_model()
-
-# Получение информации о тензорах входа и выхода модели
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
-
-# Порог и окно сглаживания
+# threshold и smoothing_window
 THRESHOLD = 21.5  
 SMOOTHING_WINDOW = 4  
+# Загрузка модели Keras с использованием Streamlit caching
+model_path = 'model.keras'  # Замените на ваш путь к модели
+# Загрузка модели Keras с использованием Streamlit caching
+@st.cache_resource
+def load_keras_model(model_path):
+    return load_model(model_path)
 
 def load_audio_file(file_path, sr=44100):
     try:
         audio, sample_rate = librosa.load(file_path, sr=sr)
     except Exception as e:
-        st.write(f"Ошибка при загрузке с помощью librosa: {e}. Пробуем использовать scipy...")
+        st.write(f"Error with librosa: {e}. Trying scipy...")
         sample_rate, audio = wavfile.read(file_path)
         if sample_rate != sr:
             audio = librosa.resample(audio.astype(float), orig_sr=sample_rate, target_sr=sr)
@@ -65,105 +57,62 @@ def extract_features(audio, sample_rate, frame_length, feature_type):
 def smooth_predictions(predictions, window_size):
     if window_size < 2:
         return predictions  
-    return np.convolve(predictions, np.ones(window_size)/window_size, mode='valid')
+    return np.convolve(predictions, np.ones(window_size) / window_size, mode='valid')
 
-def prepare_data_for_model(features, expected_shape):
-    # Извлекаем данные в нужной форме для модели
-    num_samples = features.shape[0]
-    frame_size = expected_shape[1]
-    num_channels = expected_shape[2]
-
-    # Рассчитываем количество батчей
-    batch_size = expected_shape[0]
-    total_batches = (num_samples + batch_size - 1) // batch_size  # Округляем вверх для нужного числа батчей
-
-    # Создаем пустой массив для хранения всех батчей
-    prepared_data = np.zeros((total_batches * batch_size, frame_size, num_channels), dtype=np.float32)
-
-    # Копируем данные с изменением формы
-    for i in range(num_samples):
-        prepared_data[i, :, 0] = features[i].flatten()
-
-    # Возвращаем данные в ожидаемой форме для модели
-    prepared_data = prepared_data.reshape((-1, batch_size, frame_size, num_channels))
-    return prepared_data
-
-def predict_with_tflite(interpreter, features):
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
-
-    # Ожидаемая форма входных данных
-    expected_shape = input_details[0]['shape']
-
-    # Преобразуем признаки в нужную форму для модели
-    input_data = prepare_data_for_model(features, expected_shape)
-
-    predictions = []
-
-    for i in range(0, input_data.shape[0], expected_shape[0]):
-        batch = input_data[i:i + expected_shape[0]]
-
-        # Устанавливаем данные для входного тензора
-        interpreter.set_tensor(input_details[0]['index'], batch)
-
-        # Выполняем предсказание
-        interpreter.invoke()
-
-        # Получаем результаты
-        output_data = interpreter.get_tensor(output_details[0]['index'])
-        predictions.extend(output_data.flatten())
-
-    return np.array(predictions)
-
-def process_and_plot(file_path, interpreter, samplerate_target, samplesize_ms):
+def process_and_plot(file_path, model, samplerate_target, samplesize_ms):
     frame_length = samplesize_ms / 1000
 
     audio, sample_rate = load_audio_file(file_path, sr=samplerate_target)
     features = extract_features(audio, sample_rate, frame_length, feature_type='raw')
 
-    # Прогнозирование с использованием TFLite модели
-    predictions = predict_with_tflite(interpreter, features)
-
-    if predictions.size == 0:
-        st.error("Не удалось получить предсказания из модели. Проверьте логи для получения дополнительных сведений.")
-        return
+    # Преобразование features в формат, подходящий для модели Keras
+    features_tensor = tf.convert_to_tensor(features, dtype=tf.float32)
+    predictions = model.predict(features_tensor).flatten()
 
     smoothed_predictions = smooth_predictions(predictions, SMOOTHING_WINDOW)
-    
     filtered_predictions = smoothed_predictions[smoothed_predictions > THRESHOLD]
-    average_value = np.mean(filtered_predictions) if len(filtered_predictions) > 0 else 0  
+    if len(filtered_predictions) > 0:
+        average_value = np.mean(filtered_predictions)
+    else:
+        average_value = 0  
 
     time_axis_original = np.linspace(0, len(audio) / sample_rate, num=len(predictions))
     time_axis_smoothed = np.linspace(0, len(audio) / sample_rate, num=len(smoothed_predictions))
 
     fig, ax = plt.subplots()
-    ax.plot(time_axis_original, predictions, label='Оригинальный прогноз потока (л/мин)', alpha=0.5)
-    ax.plot(time_axis_smoothed, smoothed_predictions, label='Сглаженный прогноз потока (л/мин)', linewidth=2)
-    ax.axhline(y=average_value, color='r', linestyle='--', label=f'Средний поток (л/мин) (>{THRESHOLD})')
-    ax.set_xlabel('Время (с)')
-    ax.set_ylabel('Поток (л/мин)')
+    ax.plot(time_axis_original, predictions, label='Original Predicted Flow Rate L/min', alpha=0.5)
+    ax.plot(time_axis_smoothed, smoothed_predictions, label='Smoothed Predicted Flow Rate L/min', linewidth=2)
+    ax.axhline(y=average_value, color='r', linestyle='--', label=f'Average Flow Rate L/min (>{THRESHOLD})')
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Flow Rate L/min')
     ax.legend()
 
     base_name = os.path.splitext(os.path.basename(file_path))[0]
-    ax.set_title(f'Прогнозы для {base_name}')
-    st.pyplot(fig)
+    ax.set_title(f'Predictions for {base_name}')
 
-    st.write(f'Средний прогноз для {base_name} с порогом {THRESHOLD} и окном сглаживания {SMOOTHING_WINDOW}: {average_value}')
+    st.pyplot(fig)
+    st.write(f'Predicted average for {base_name} with threshold {THRESHOLD} and smoothing window {SMOOTHING_WINDOW}: {average_value}')
 
 def main():
-    st.title('Обработка аудиофайлов с использованием TensorFlow Lite')
+    st.title("Audio Analysis with Deep Learning using Keras")
 
-    uploaded_file = st.file_uploader("Загрузите файл .wav", type="wav")
-    
-    if uploaded_file is not None:
-        # Сохранение загруженного файла временно
-        with open("temp_audio.wav", "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        
-        # Анализ загруженного файла
-        process_and_plot("temp_audio.wav", interpreter, samplerate_target=44100, samplesize_ms=50)
-    else:
-        st.write("Пожалуйста, загрузите файл .wav для анализа.")
+    # Путь к файлу модели
+    model_path = st.text_input('Enter path to Keras model:')
+    if model_path:
+        model = load_keras_model(model_path)
 
-if __name__ == '__main__':
+        folder_path = st.text_input('Enter folder path with .wav files:')
+
+        if folder_path:
+            samplerate_target = st.number_input('Enter sample rate (default is 44100):', value=44100)
+            samplesize_ms = st.number_input('Enter sample size in milliseconds (default is 50):', value=50)
+
+            if st.button('Process Files'):
+                for file_name in os.listdir(folder_path):
+                    file_path = os.path.join(folder_path, file_name)
+                    if os.path.isfile(file_path) and file_path.lower().endswith('.wav'):
+                        process_and_plot(file_path, model, samplerate_target, samplesize_ms)
+
+if __name__ == "__main__":
     main()
+
